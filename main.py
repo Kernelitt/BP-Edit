@@ -137,7 +137,7 @@ def main():
         for c in range(cols):
             x = c * tile_size
             y = r * tile_size
-            if x + tile_size <= atlas_width and y + tile_size <= atlas_height and i <= 11:
+            if x + tile_size <= atlas_width and y + tile_size <= atlas_height and i <= 23:
                 texture_atlas[i] = atlas_img.subsurface((x, y, tile_size, tile_size))
                 i += 1
             else:
@@ -152,12 +152,12 @@ def main():
 
     # Camera variables
     camera_x = 0
-    camera_y = 0
+    camera_y = -160
     zoom = 1.0
     cell_size = BASE_CELL_SIZE * zoom
 
     # Hotbar
-    hotbar_items = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16]  # Available types
+    hotbar_items = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21]  # Available types
     selected_item = 1
     hotbar_height = 60
     hotbar_y = SCREEN_HEIGHT - hotbar_height
@@ -236,7 +236,7 @@ def main():
                                 break
                     elif mouse_y >= 100:
                         grid_x = int((mouse_x + camera_x) / cell_size)
-                        grid_y = int((max_y - (mouse_y + camera_y) / cell_size))
+                        grid_y = int((SCREEN_HEIGHT - (mouse_y + camera_y) / cell_size))
                         if pygame.key.get_mods() & pygame.KMOD_CTRL:
                             # Start selection rectangle
                             selection_start = (grid_x, grid_y)
@@ -332,13 +332,13 @@ def main():
                                     objects.append({'type': selected_item, 'skin': 0, 'x': grid_x, 'y': grid_y, 'rotation': 0})
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_LEFT or event.key == pygame.K_a:
-                    camera_x -= 50
+                    camera_x -= cell_size
                 elif event.key == pygame.K_RIGHT or event.key == pygame.K_d:
-                    camera_x += 50
+                    camera_x += cell_size
                 elif event.key == pygame.K_UP or event.key == pygame.K_w:
-                    camera_y -= 50
+                    camera_y -= cell_size
                 elif event.key == pygame.K_DOWN or event.key == pygame.K_s:
-                    camera_y += 50
+                    camera_y += cell_size
                 elif event.key == pygame.K_PLUS or event.key == pygame.K_EQUALS:
                     zoom *= 1.25
                     cell_size = BASE_CELL_SIZE * zoom
