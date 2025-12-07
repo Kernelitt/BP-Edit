@@ -2,18 +2,19 @@ from objects import OBJECT_NAME
 import pygame, sys, os
 from tkinter import filedialog, Tk
 
-TEXTURE_SHEET_PATH = "textures\\parts.png"
+TEXTURE_SHEET_PATH = "Textures\\parts.png"
 SAVEFILE_DIRECTORY = os.path.join(os.environ["APPDATA"], "..", "LocalLow\\_Imaginary_\\Bad Piggies__Rebooted\\contraptionsB\\")
 print(SAVEFILE_DIRECTORY)
 
 class Part:
-    def __init__(self, grid_x, grid_y, object_id, layer=0, rotation=0, mirror=False):
+    def __init__(self, grid_x, grid_y, object_id, layer=0, rotation=0, mirror=False, skin=0):
         self.grid_x = grid_x
         self.grid_y = grid_y
         self.object_id = object_id
         self.layer = layer
         self.rotation = rotation
         self.mirror = mirror
+        self.skin = skin
 
 class App():
     def __init__(self):
@@ -28,6 +29,16 @@ class App():
         self.hotbar_cols = (len(self.grid.textures) + self.hotbar_rows - 1) // self.hotbar_rows
         self.hotbar_x = 10
         self.hotbar_y = self.screen.get_height() - self.hotbar_rows * self.hotbar_slot_size - 10
+
+        self.selected_skin = 0
+        self.skin_panel_visible = False
+        self.skin_button_size = 60
+        self.skin_button_x = self.screen.get_width() - self.skin_button_size - 10
+        self.skin_button_y = self.screen.get_height() - self.skin_button_size - 10
+        self.skin_panel_width = 200
+        self.skin_panel_height = 600
+        self.skin_panel_x = self.skin_button_x + (self.skin_button_size - self.skin_panel_width)  # Center horizontally
+        self.skin_panel_y = self.skin_button_y - self.skin_panel_height  # Above the button
 
         self.show_help = False
         self.font = pygame.font.SysFont(None, 24)
@@ -50,16 +61,22 @@ class App():
                     elif event.key == pygame.K_F1:
                         self.show_help = not self.show_help
                     else:
-                        self.grid.handle_event(event, self.selected_part_id)
+                        self.grid.handle_event(event, self.selected_part_id, self.selected_skin)
                 elif event.type == pygame.KEYUP:
                     self.grid.handle_event(event, self.selected_part_id)
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     mouse_x, mouse_y = event.pos
-                    if self.is_hotbar_click(mouse_x, mouse_y):
+                    if self.is_skin_button_click(mouse_x, mouse_y):
+                        if event.button == 1:
+                            self.skin_panel_visible = not self.skin_panel_visible
+                    elif self.skin_panel_visible and self.is_skin_panel_click(mouse_x, mouse_y):
+                        if event.button == 1:
+                            self.handle_skin_panel_click(mouse_x, mouse_y)
+                    elif self.is_hotbar_click(mouse_x, mouse_y):
                         if event.button == 1:
                             self.handle_hotbar_click(mouse_x, mouse_y)
                     else:
-                        self.grid.handle_event(event, self.selected_part_id)
+                        self.grid.handle_event(event, self.selected_part_id, self.selected_skin)
                 elif event.type == pygame.MOUSEMOTION:
                     self.grid.handle_event(event, self.selected_part_id)
                 elif event.type == pygame.MOUSEBUTTONUP:
@@ -79,7 +96,8 @@ class App():
         row = (mouse_y - self.hotbar_y) // self.hotbar_slot_size
         index = row * self.hotbar_cols + col
         if 0 <= index < len(self.grid.textures):
-            self.selected_part_id = list(self.grid.textures.keys())[index]
+            self.selected_part_id = list(self.grid.textures.keys())[index][0]  # obj_id
+            self.selected_skin = 0  # Reset to default skin
 
     def draw(self):
         self.screen.fill("#000768")
@@ -90,6 +108,12 @@ class App():
         # Draw hotbar
         self.draw_hotbar()
 
+        # Draw skin button
+        self.draw_skin_button()
+
+        # Draw skin panel if visible
+        self.draw_skin_panel()
+
         # Draw help screen if enabled
         if self.show_help:
             self.draw_help()
@@ -99,16 +123,18 @@ class App():
 
     def draw_hotbar(self):
         for i, part_id in enumerate(self.grid.textures.keys()):
+            obj_id = part_id[0]  # part_id is (obj_id, 0)
             row = i // self.hotbar_cols
             col = i % self.hotbar_cols
             x = self.hotbar_x + col * self.hotbar_slot_size
             y = self.hotbar_y + row * self.hotbar_slot_size
             # Draw slot background
-            color = (150, 150, 150) if part_id == self.selected_part_id else (100, 100, 100)
+            color = (150, 150, 150) if obj_id == self.selected_part_id else (100, 100, 100)
             pygame.draw.rect(self.screen, color, (x, y, self.hotbar_slot_size, self.hotbar_slot_size))
             pygame.draw.rect(self.screen, (200, 200, 200), (x, y, self.hotbar_slot_size, self.hotbar_slot_size), 2)
-            # Draw texture
-            texture = self.grid.textures[part_id]
+            # Draw texture with default skin
+            texture_key = (obj_id, 0)
+            texture = self.grid.textures[texture_key]
             scaled_texture = pygame.transform.scale(texture, (self.hotbar_slot_size - 4, self.hotbar_slot_size - 4))
             self.screen.blit(scaled_texture, (x + 2, y + 2))
 
@@ -155,6 +181,61 @@ class App():
             self.screen.blit(text_surface, (x, y))
             y += 30
 
+    def draw_skin_button(self):
+        # Draw skin button in bottom right
+        color = (200, 200, 200) if self.skin_panel_visible else (150, 150, 150)
+        pygame.draw.rect(self.screen, color, (self.skin_button_x, self.skin_button_y, self.skin_button_size, self.skin_button_size))
+        pygame.draw.rect(self.screen, (255, 255, 255), (self.skin_button_x, self.skin_button_y, self.skin_button_size, self.skin_button_size), 2)
+        # Draw current selected part with skin
+        texture_key = (self.selected_part_id, self.selected_skin)
+        if texture_key in self.grid.textures:
+            texture = self.grid.textures[texture_key]
+        else:
+            texture = self.grid.textures[(self.selected_part_id, 0)]  # fallback
+        scaled_texture = pygame.transform.scale(texture, (self.skin_button_size - 4, self.skin_button_size - 4))
+        self.screen.blit(scaled_texture, (self.skin_button_x + 2, self.skin_button_y + 2))
+
+    def draw_skin_panel(self):
+        if not self.skin_panel_visible:
+            return
+        # Draw panel background
+        pygame.draw.rect(self.screen, (50, 50, 50), (self.skin_panel_x, self.skin_panel_y, self.skin_panel_width, self.skin_panel_height))
+        pygame.draw.rect(self.screen, (255, 255, 255), (self.skin_panel_x, self.skin_panel_y, self.skin_panel_width, self.skin_panel_height), 2)
+        # Draw skin options
+        if self.selected_part_id in self.grid.skin_dict:
+            skins = self.grid.skin_dict[self.selected_part_id]
+            skin_size = 40
+            for i, skin_texture in enumerate(skins):
+                x = self.skin_panel_x + 10 + (i % 4) * (skin_size + 5)
+                y = self.skin_panel_y + 10 + (i // 4) * (skin_size + 5)
+                if x + skin_size > self.skin_panel_x + self.skin_panel_width - 10:
+                    continue  # Skip if out of bounds
+                color = (200, 200, 200) if i == self.selected_skin else (100, 100, 100)
+                pygame.draw.rect(self.screen, color, (x, y, skin_size, skin_size))
+                pygame.draw.rect(self.screen, (255, 255, 255), (x, y, skin_size, skin_size), 1)
+                scaled_texture = pygame.transform.scale(skin_texture, (skin_size - 4, skin_size - 4))
+                self.screen.blit(scaled_texture, (x + 2, y + 2))
+
+    def is_skin_button_click(self, mouse_x, mouse_y):
+        return (self.skin_button_x <= mouse_x <= self.skin_button_x + self.skin_button_size and
+                self.skin_button_y <= mouse_y <= self.skin_button_y + self.skin_button_size)
+
+    def is_skin_panel_click(self, mouse_x, mouse_y):
+        return (self.skin_panel_x <= mouse_x <= self.skin_panel_x + self.skin_panel_width and
+                self.skin_panel_y <= mouse_y <= self.skin_panel_y + self.skin_panel_height)
+
+    def handle_skin_panel_click(self, mouse_x, mouse_y):
+        if self.selected_part_id not in self.grid.skin_dict:
+            return
+        skins = self.grid.skin_dict[self.selected_part_id]
+        skin_size = 40
+        for i, skin_texture in enumerate(skins):
+            x = self.skin_panel_x + 10 + (i % 4) * (skin_size + 5)
+            y = self.skin_panel_y + 10 + (i // 4) * (skin_size + 5)
+            if x <= mouse_x <= x + skin_size and y <= mouse_y <= y + skin_size:
+                self.selected_skin = i  # skins are 0-indexed
+                break
+
 
 class Grid():
     def __init__(self):
@@ -183,19 +264,49 @@ class Grid():
         self.drag_initial_positions = None
         self.copied_parts = []
         self.textures = {}
-        # Load texture atlas
+        self.skin_textures = {}
+        # Load main texture atlas
         self.atlas = pygame.image.load(TEXTURE_SHEET_PATH).convert_alpha()
         atlas_width, atlas_height = self.atlas.get_size()
         self.cols = atlas_width // 108
         self.rows = atlas_height // 108
-        # Extract individual textures from atlas
-        for i in range(1, self.cols * self.rows + 1):
+        # Extract textures from main atlas (skin=0)
+        for i in range(1, 48):
             col = (i - 1) % self.cols
             row = (i - 1) // self.cols
             x = col * 108
             y = row * 108
-            self.textures[i] = self.atlas.subsurface((x, y, 108, 108))
+            self.textures[(i, 0)] = self.atlas.subsurface((x, y, 108, 108))
 
+        # Load skin atlases if available
+        for obj_id in range(1, self.cols * self.rows + 1):
+            skin_path = f"Textures\\{obj_id}_skin.png"
+            if os.path.exists(skin_path):
+                skin_atlas = pygame.image.load(skin_path).convert_alpha()
+                skin_atlas_width, skin_atlas_height = skin_atlas.get_size()
+                skin_cols = skin_atlas_width // 108
+                skin_rows = skin_atlas_height // 108
+                for skin_i in range(1, skin_cols * skin_rows + 1):
+                    col = (skin_i - 1) % skin_cols
+                    row = (skin_i - 1) // skin_cols
+                    x = col * 108
+                    y = row * 108
+                    subsurface = skin_atlas.subsurface((x, y, 108, 108))
+                    # Skip empty surfaces
+                    if subsurface.get_bounding_rect().width > 0:
+                        self.skin_textures[(obj_id, skin_i)] = subsurface
+        print(self.skin_textures)
+
+
+
+        # Create skin dictionary: {obj_id: [list of skin textures]}
+        self.skin_dict = {}
+        for obj_id in range(1, 48):
+            self.skin_dict[obj_id] = [self.textures[(obj_id, 0)]]  # Add default skin first
+        for (obj_id, skin_i), texture in self.skin_textures.items():
+            self.skin_dict[obj_id].append(texture)
+        print(self.skin_dict)
+        
     def draw(self, screen):
         width, height = screen.get_size()
         cell_size_zoomed = int(self.cell_size * self.zoom)
@@ -207,6 +318,17 @@ class Grid():
         start_y = -self.offset_y % cell_size_zoomed
         for y in range(start_y, height + cell_size_zoomed, cell_size_zoomed):
             pygame.draw.line(screen, (100, 100, 100), (0, y), (width, y))
+        # Draw axes
+        width, height = screen.get_size()
+        # Vertical axis (x=0)
+        axis_x = -self.offset_x
+        if 0 <= axis_x <= width:
+            pygame.draw.line(screen, (255, 255, 255), (axis_x, 0), (axis_x, height), 2)
+        # Horizontal axis (y=0)
+        axis_y = -self.offset_y
+        if 0 <= axis_y <= height:
+            pygame.draw.line(screen, (255, 255, 255), (0, axis_y), (width, axis_y), 2)
+
         # Draw colored cells
         for (grid_x, grid_y), color in self.colored_cells.items():
             screen_x = grid_x * cell_size_zoomed - self.offset_x
@@ -215,18 +337,23 @@ class Grid():
         # Draw parts in layer order
         for layer in range(len(self.parts_in_grid)):
             for part in self.parts_in_grid[layer]:
-                if part.object_id in self.textures:
-                    texture = self.textures[part.object_id]
-                    screen_x = part.grid_x * cell_size_zoomed - self.offset_x
-                    screen_y = part.grid_y * cell_size_zoomed - self.offset_y
-                    scaled_texture = pygame.transform.scale(texture, (cell_size_zoomed, cell_size_zoomed))
-                    if part.mirror:
-                        scaled_texture = pygame.transform.flip(scaled_texture, True, False)
-                    rotated_texture = pygame.transform.rotate(scaled_texture, part.rotation * 90)
-                    screen.blit(rotated_texture, (screen_x, screen_y))
-                    # Highlight selected parts
-                    if part in self.selected_parts:
-                        pygame.draw.rect(screen, (255, 255, 0), (screen_x, screen_y, cell_size_zoomed, cell_size_zoomed), 3)
+                texture_key = (part.object_id, part.skin)
+                if texture_key in self.textures:
+                    texture = self.textures[texture_key]
+                elif texture_key in self.skin_textures:
+                    texture = self.skin_textures[texture_key]
+                else:
+                    continue  # Skip if no texture found
+                screen_x = part.grid_x * cell_size_zoomed - self.offset_x
+                screen_y = part.grid_y * cell_size_zoomed - self.offset_y
+                scaled_texture = pygame.transform.smoothscale(texture, (cell_size_zoomed, cell_size_zoomed))
+                if part.mirror:
+                    scaled_texture = pygame.transform.flip(scaled_texture, True, False)
+                rotated_texture = pygame.transform.rotate(scaled_texture, part.rotation * 90)
+                screen.blit(rotated_texture, (screen_x, screen_y))
+                # Highlight selected parts
+                if part in self.selected_parts:
+                    pygame.draw.rect(screen, (255, 255, 0), (screen_x, screen_y, cell_size_zoomed, cell_size_zoomed), 3)
         # Draw selection rectangle
         if self.selection_rect:
             pygame.draw.rect(screen, (255, 255, 0), self.selection_rect, 2)
@@ -259,7 +386,7 @@ class Grid():
         with open(filepath, 'w') as f:
             for layer in self.parts_in_grid:
                 for part in layer:
-                    f.write(f"{part.object_id},0,{part.grid_x},{-part.grid_y},{part.rotation},{int(part.mirror)},0,0\n")
+                    f.write(f"{part.object_id},{part.skin},{part.grid_x},{-part.grid_y},{part.rotation},{int(part.mirror)},0,0\n")
 
     def load(self, filepath):
         self.parts_in_grid = [[], []]  # Initialize as list of lists for layers
@@ -276,7 +403,7 @@ class Grid():
                         rotation = int(parts[4])
                         mirror = bool(int(parts[5]))
                         layer = 0 if object_id in [5, 6] else 1
-                        new_part = Part(grid_x, grid_y, object_id, layer, rotation, mirror)
+                        new_part = Part(grid_x, grid_y, object_id, layer, rotation, mirror, skin)
                         if layer < len(self.parts_in_grid):
                             self.parts_in_grid[layer].append(new_part)
 
@@ -295,7 +422,7 @@ class Grid():
                         rotation = int(parts[4])
                         mirror = bool(int(parts[5]))
                         layer = 0 if object_id in [5, 6] else 1
-                        new_part = Part(grid_x, grid_y, object_id, layer, rotation, mirror)
+                        new_part = Part(grid_x, grid_y, object_id, layer, rotation, mirror, skin)
                         # Add to grid without clearing
                         if layer < len(self.parts_in_grid):
                             self.parts_in_grid[layer].append(new_part)
@@ -319,7 +446,7 @@ class Grid():
     def move(self, dx, dy):
         pass
 
-    def handle_event(self, event, selected_part_id=1):
+    def handle_event(self, event, selected_part_id=1, selected_skin=0):
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_w:
                 self.moving_up = True
@@ -359,18 +486,18 @@ class Grid():
                     min_y = min(part.grid_y for part in self.selected_parts)
                     for part in self.selected_parts:
                         # Store relative positions
-                        self.copied_parts.append((part.object_id, part.grid_x - min_x, part.grid_y - min_y, part.rotation, part.layer, part.mirror))
+                        self.copied_parts.append((part.object_id, part.grid_x - min_x, part.grid_y - min_y, part.rotation, part.layer, part.mirror, part.skin))
             elif event.key == pygame.K_v and pygame.key.get_mods() & pygame.KMOD_CTRL:
                 # Paste copied parts
                 if self.copied_parts:
                     mouse_x, mouse_y = pygame.mouse.get_pos()
                     base_grid_x, base_grid_y = self.screen_to_grid(mouse_x, mouse_y)
-                    for obj_id, rel_x, rel_y, rot, layer, mirror in self.copied_parts:
+                    for obj_id, rel_x, rel_y, rot, layer, mirror, skin in self.copied_parts:
                         new_grid_x = base_grid_x + rel_x
                         new_grid_y = base_grid_y + rel_y
                         # Check if position is free
                         if not any(part.grid_x == new_grid_x and part.grid_y == new_grid_y for part in self.parts_in_grid[layer]):
-                            new_part = Part(new_grid_x, new_grid_y, obj_id, layer, rot, mirror)
+                            new_part = Part(new_grid_x, new_grid_y, obj_id, layer, rot, mirror, skin)
                             self.parts_in_grid[layer].append(new_part)
                 
         if event.type == pygame.KEYUP:
@@ -411,7 +538,7 @@ class Grid():
                         # Check if there's already a part at this position on the layer
                         if not any(part.grid_x == grid_x and part.grid_y == grid_y for part in self.parts_in_grid[layer]):
                             # Create a new part at the clicked cell using selected_part_id
-                            new_part = Part(grid_x, grid_y, selected_part_id, layer)
+                            new_part = Part(grid_x, grid_y, selected_part_id, layer, skin=selected_skin)
                             self.parts_in_grid[layer].append(new_part)
 
             elif event.button == 3:  # Right mouse button
