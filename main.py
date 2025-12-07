@@ -1,393 +1,398 @@
-import pygame
-import os
-from simple_framework import SimplePygameButton, SimplePygameContextMenu
-import tkinter as tk
-from tkinter import filedialog
 from objects import OBJECT_NAME
+import pygame, sys, os
+from tkinter import filedialog, Tk
 
-# Constants
-SCREEN_WIDTH = 1600
-SCREEN_HEIGHT = 900
-BASE_CELL_SIZE = 40
+TEXTURE_SHEET_PATH = "textures\\parts.png"
+SAVEFILE_DIRECTORY = os.path.join(os.environ["APPDATA"], "..", "LocalLow\\_Imaginary_\\Bad Piggies__Rebooted\\contraptionsB\\")
+print(SAVEFILE_DIRECTORY)
 
-# Colors
-BLACK = (0, 0, 15)
-WHITE = (255, 255, 255)
-GRAY = (128, 128, 128)
-RED = (255, 0, 0)
-GREEN = (0, 255, 0)
-BLUE = (0, 0, 255)
+class Part:
+    def __init__(self, grid_x, grid_y, object_id, layer=0, rotation=0):
+        self.grid_x = grid_x
+        self.grid_y = grid_y
+        self.object_id = object_id
+        self.layer = layer
+        self.rotation = rotation
 
-# Save directory
-SAVE_DIR = os.path.join(os.environ['APPDATA'], '..', 'LocalLow', '_Imaginary_', 'Bad Piggies__Rebooted', 'contraptionsB')
+class App():
+    def __init__(self):
+        pygame.init()
+        self.screen = pygame.display.set_mode((1600, 900))
+        self.clock = pygame.time.Clock()
 
-def load_save_file(filename):
-    filepath = os.path.join(SAVE_DIR, filename)
-    objects = []
-    if os.path.exists(filepath):
+        self.grid = Grid()
+        self.selected_part_id = 1
+        self.hotbar_slot_size = 60
+        self.hotbar_rows = 2
+        self.hotbar_cols = (len(self.grid.textures) + self.hotbar_rows - 1) // self.hotbar_rows
+        self.hotbar_x = 10
+        self.hotbar_y = self.screen.get_height() - self.hotbar_rows * self.hotbar_slot_size - 10
+
+        self.show_help = False
+        self.font = pygame.font.SysFont(None, 24)
+
+        self.tk = Tk(useTk=False)
+
+    def run(self):
+        self.running = True
+        while self.running:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    self.running = False
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_o and (event.mod & pygame.KMOD_CTRL):
+                        self.load_savefile()
+                    elif event.key == pygame.K_s and (event.mod & pygame.KMOD_CTRL):
+                        self.save_savefile()
+                    elif event.key == pygame.K_F1:
+                        self.show_help = not self.show_help
+                    else:
+                        self.grid.handle_event(event, self.selected_part_id)
+                elif event.type == pygame.KEYUP:
+                    self.grid.handle_event(event, self.selected_part_id)
+                elif event.type == pygame.MOUSEBUTTONDOWN:
+                    mouse_x, mouse_y = event.pos
+                    if self.is_hotbar_click(mouse_x, mouse_y):
+                        if event.button == 1:
+                            self.handle_hotbar_click(mouse_x, mouse_y)
+                    else:
+                        self.grid.handle_event(event, self.selected_part_id)
+                elif event.type == pygame.MOUSEMOTION:
+                    self.grid.handle_event(event, self.selected_part_id)
+                elif event.type == pygame.MOUSEBUTTONUP:
+                    self.grid.handle_event(event, self.selected_part_id)
+
+            self.grid.update()
+
+            self.draw()
+            self.clock.tick(60)
+
+    def is_hotbar_click(self, mouse_x, mouse_y):
+        return (self.hotbar_x <= mouse_x <= self.hotbar_x + self.hotbar_cols * self.hotbar_slot_size and
+                self.hotbar_y <= mouse_y <= self.hotbar_y + self.hotbar_rows * self.hotbar_slot_size)
+
+    def handle_hotbar_click(self, mouse_x, mouse_y):
+        col = (mouse_x - self.hotbar_x) // self.hotbar_slot_size
+        row = (mouse_y - self.hotbar_y) // self.hotbar_slot_size
+        index = row * self.hotbar_cols + col
+        if 0 <= index < len(self.grid.textures):
+            self.selected_part_id = list(self.grid.textures.keys())[index]
+
+    def draw(self):
+        self.screen.fill("#000768")
+
+        # Draw grid here if needed
+        self.grid.draw(self.screen)
+
+        # Draw hotbar
+        self.draw_hotbar()
+
+        # Draw help screen if enabled
+        if self.show_help:
+            self.draw_help()
+            
+        self.screen.blit(self.font.render("Press F1 to show controls", True, (255, 255, 255)), (200, 0))
+        pygame.display.flip()
+
+    def draw_hotbar(self):
+        for i, part_id in enumerate(self.grid.textures.keys()):
+            row = i // self.hotbar_cols
+            col = i % self.hotbar_cols
+            x = self.hotbar_x + col * self.hotbar_slot_size
+            y = self.hotbar_y + row * self.hotbar_slot_size
+            # Draw slot background
+            color = (150, 150, 150) if part_id == self.selected_part_id else (100, 100, 100)
+            pygame.draw.rect(self.screen, color, (x, y, self.hotbar_slot_size, self.hotbar_slot_size))
+            pygame.draw.rect(self.screen, (200, 200, 200), (x, y, self.hotbar_slot_size, self.hotbar_slot_size), 2)
+            # Draw texture
+            texture = self.grid.textures[part_id]
+            scaled_texture = pygame.transform.scale(texture, (self.hotbar_slot_size - 4, self.hotbar_slot_size - 4))
+            self.screen.blit(scaled_texture, (x + 2, y + 2))
+
+    def load_savefile(self):
+        file_path = filedialog.askopenfilename(initialdir=SAVEFILE_DIRECTORY)
+        if file_path:
+            self.grid.load(file_path)
+
+    def save_savefile(self):
+        file_path = filedialog.asksaveasfilename(initialdir=SAVEFILE_DIRECTORY)
+        if file_path:
+            self.grid.save(file_path)
+
+    def draw_help(self):
+        help_lines = [
+            "Controls:",
+            "WASD - Move camera",
+            "Arrow Up/Down - Zoom in/out",
+            "Left Click - Place part / Select",
+            "Right Click - Remove part",
+            "Ctrl + Left Click - Start selection",
+            "R - Rotate part",
+            "Ctrl+C - Copy selected parts",
+            "Ctrl+V - Paste copied parts",
+            "Ctrl+O - Load file",
+            "Ctrl+S - Save file",
+            "F1 - Toggle help"
+        ]
+        x, y = 10, 10
+        for line in help_lines:
+            text_surface = self.font.render(line, True, (255, 255, 255))
+            self.screen.blit(text_surface, (x, y))
+            y += 30
+
+
+class Grid():
+    def __init__(self):
+        self.parts_in_grid = [[], []]  # Initialize as list of lists for layers
+        self.cell_size = 50  # Size of each cell in pixels
+        self.colored_cells = {}  # Dictionary to store colored cells: (grid_x, grid_y) -> color
+        self.offset_x = 0
+        self.offset_y = 0
+        self.move_speed = 5
+        self.moving_up = False
+        self.moving_down = False
+        self.moving_left = False
+        self.moving_right = False
+        self.zoom = 1.0
+        self.zoom_speed = 0.02
+        self.zooming_in = False
+        self.zooming_out = False
+        self.rotating = False
+        self.selecting = False
+        self.selection_start = None
+        self.selection_rect = None
+        self.selected_parts = []
+        self.dragging = False
+        self.drag_offset = None
+        self.drag_start_grid = None
+        self.drag_initial_positions = None
+        self.copied_parts = []
+        self.textures = {}
+        # Load texture atlas
+        self.atlas = pygame.image.load(TEXTURE_SHEET_PATH).convert_alpha()
+        atlas_width, atlas_height = self.atlas.get_size()
+        self.cols = atlas_width // 108
+        self.rows = atlas_height // 108
+        # Extract individual textures from atlas
+        for i in range(1, self.cols * self.rows + 1):
+            col = (i - 1) % self.cols
+            row = (i - 1) // self.cols
+            x = col * 108
+            y = row * 108
+            self.textures[i] = self.atlas.subsurface((x, y, 108, 108))
+
+    def draw(self, screen):
+        width, height = screen.get_size()
+        cell_size_zoomed = int(self.cell_size * self.zoom)
+        # Draw vertical lines
+        start_x = -self.offset_x % cell_size_zoomed
+        for x in range(start_x, width + cell_size_zoomed, cell_size_zoomed):
+            pygame.draw.line(screen, (100, 100, 100), (x, 0), (x, height))
+        # Draw horizontal lines
+        start_y = -self.offset_y % cell_size_zoomed
+        for y in range(start_y, height + cell_size_zoomed, cell_size_zoomed):
+            pygame.draw.line(screen, (100, 100, 100), (0, y), (width, y))
+        # Draw colored cells
+        for (grid_x, grid_y), color in self.colored_cells.items():
+            screen_x = grid_x * cell_size_zoomed - self.offset_x
+            screen_y = grid_y * cell_size_zoomed - self.offset_y
+            pygame.draw.rect(screen, color, (screen_x, screen_y, cell_size_zoomed, cell_size_zoomed))
+        # Draw parts in layer order
+        for layer in range(len(self.parts_in_grid)):
+            for part in self.parts_in_grid[layer]:
+                if part.object_id in self.textures:
+                    texture = self.textures[part.object_id]
+                    screen_x = part.grid_x * cell_size_zoomed - self.offset_x
+                    screen_y = part.grid_y * cell_size_zoomed - self.offset_y
+                    scaled_texture = pygame.transform.scale(texture, (cell_size_zoomed, cell_size_zoomed))
+                    rotated_texture = pygame.transform.rotate(scaled_texture, part.rotation * 90)
+                    screen.blit(rotated_texture, (screen_x, screen_y))
+                    # Highlight selected parts
+                    if part in self.selected_parts:
+                        pygame.draw.rect(screen, (255, 255, 0), (screen_x, screen_y, cell_size_zoomed, cell_size_zoomed), 3)
+        # Draw selection rectangle
+        if self.selection_rect:
+            pygame.draw.rect(screen, (255, 255, 0), self.selection_rect, 2)
+
+    def update(self):
+        if self.moving_up:
+            self.offset_y -= self.move_speed
+        if self.moving_down:
+            self.offset_y += self.move_speed
+        if self.moving_left:
+            self.offset_x -= self.move_speed
+        if self.moving_right:
+            self.offset_x += self.move_speed
+        if self.zooming_in:
+            self.zoom += self.zoom_speed
+            if self.zoom > 5.0:
+                self.zoom = 5.0
+        if self.zooming_out:
+            self.zoom -= self.zoom_speed
+            if self.zoom < 0.1:
+                self.zoom = 0.1
+
+    def screen_to_grid(self, screen_x, screen_y):
+        cell_size_zoomed = int(self.cell_size * self.zoom)
+        grid_x = (screen_x + self.offset_x) // cell_size_zoomed
+        grid_y = (screen_y + self.offset_y) // cell_size_zoomed
+        return grid_x, grid_y
+
+    def save(self, filepath):
+        with open(filepath, 'w') as f:
+            for layer in self.parts_in_grid:
+                for part in layer:
+                    f.write(f"{part.object_id},0,{part.grid_x},{-part.grid_y},{part.rotation},0,0,0\n")
+
+    def load(self, filepath):
+        self.parts_in_grid = [[], []]  # Initialize as list of lists for layers
         with open(filepath, 'r') as f:
             for line in f:
-                parts = line.strip().split(',')
-                if len(parts) >= 5:
-                    obj_type = int(parts[0])
-                    skin = int(parts[1])
-                    x = int(parts[2])
-                    y = int(parts[3])
-                    rotation = int(parts[4])
-                    objects.append({'type': obj_type, 'skin': skin, 'x': x, 'y': y, 'rotation': rotation})
-    return objects
+                line = line.strip()
+                if line:
+                    parts = line.split(',')
+                    if len(parts) >= 5:
+                        object_id = int(parts[0])
+                        skin = int(parts[1])
+                        grid_x = int(parts[2])
+                        grid_y = -int(parts[3])
+                        rotation = int(parts[4])
+                        layer = 0 if object_id in [5, 6] else 1
+                        new_part = Part(grid_x, grid_y, object_id, layer, rotation)
+                        if layer < len(self.parts_in_grid):
+                            self.parts_in_grid[layer].append(new_part)
 
-def save_save_file(filename, objects):
-    filepath = os.path.join(SAVE_DIR, filename)
-    with open(filepath, 'w') as f:
-        for obj in objects:
-            rotation = obj.get('rotation', 0)
-            line = f"{obj['type']},{obj['skin']},{obj['x']},{obj['y']},{rotation},0,0,0\n"
-            f.write(line)
+    def move(self, dx, dy):
+        pass
 
-def draw_grid(screen, camera_x, camera_y, cell_size):
-    import math
-    # Calculate starting positions to align grid with world coordinates
-    start_x = (math.floor(camera_x / cell_size) * cell_size) - camera_x
-    start_y = (math.floor(camera_y / cell_size) * cell_size) - camera_y
-    for x in range(int(start_x), SCREEN_WIDTH + int(cell_size), int(cell_size)):
-        pygame.draw.line(screen, GRAY, (x, 0), (x, SCREEN_HEIGHT))
-    for y in range(int(start_y), SCREEN_HEIGHT + int(cell_size), int(cell_size)):
-        pygame.draw.line(screen, GRAY, (0, y), (SCREEN_WIDTH, y))
-
-def draw_objects(screen, objects, camera_x, camera_y, cell_size, max_y, texture_atlas):
-    from collections import defaultdict
-    cell_objects = defaultdict(list)
-    for obj in objects:
-        cell_objects[(obj['x'], obj['y'])].append(obj)
-    
-    for (gx, gy), objs in cell_objects.items():
-        x = int(gx * cell_size - camera_x)
-        y = int((max_y - gy) * cell_size - camera_y)  # Invert Y
-        if 0 <= x < SCREEN_WIDTH and 0 <= y < SCREEN_HEIGHT:
-            # Draw up to 2 objects
-            for i,obj in enumerate(objs[:2]):
-                if obj['type'] in texture_atlas:
-                    tex = texture_atlas[obj['type']]
-                    # Stretch to fit the half-cell
-                    scaled_tex = pygame.transform.smoothscale(tex, (cell_size, cell_size)).convert_alpha()
-                    rotation = obj.get('rotation', 0) * 90
-                    if rotation:
-                        scaled_tex = pygame.transform.rotate(scaled_tex, rotation)
-                    screen.blit(scaled_tex, (x, y))
+    def handle_event(self, event, selected_part_id=1):
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_w:
+                self.moving_up = True
+            if event.key == pygame.K_s:
+                self.moving_down = True
+            if event.key == pygame.K_a:
+                self.moving_left = True
+            if event.key == pygame.K_d:
+                self.moving_right = True
+            if event.key == pygame.K_UP:
+                self.zooming_in = True
+            if event.key == pygame.K_DOWN:
+                self.zooming_out = True
+            if event.key == pygame.K_r:
+                mouse_x, mouse_y = pygame.mouse.get_pos()
+                grid_x, grid_y = self.screen_to_grid(mouse_x, mouse_y)
+                # Rotate the part at this position
+                for layer in self.parts_in_grid:
+                    for part in layer:
+                        if part.grid_x == grid_x and part.grid_y == grid_y:
+                            part.rotation = (part.rotation - 1) % 4
+                            break
+            elif event.key == pygame.K_c and pygame.key.get_mods() & pygame.KMOD_CTRL:
+                # Copy selected parts
+                self.copied_parts = []
+                if self.selected_parts:
+                    min_x = min(part.grid_x for part in self.selected_parts)
+                    min_y = min(part.grid_y for part in self.selected_parts)
+                    for part in self.selected_parts:
+                        # Store relative positions
+                        self.copied_parts.append((part.object_id, part.grid_x - min_x, part.grid_y - min_y, part.rotation, part.layer))
+            elif event.key == pygame.K_v and pygame.key.get_mods() & pygame.KMOD_CTRL:
+                # Paste copied parts
+                if self.copied_parts:
+                    mouse_x, mouse_y = pygame.mouse.get_pos()
+                    base_grid_x, base_grid_y = self.screen_to_grid(mouse_x, mouse_y)
+                    for obj_id, rel_x, rel_y, rot, layer in self.copied_parts:
+                        new_grid_x = base_grid_x + rel_x
+                        new_grid_y = base_grid_y + rel_y
+                        # Check if position is free
+                        if not any(part.grid_x == new_grid_x and part.grid_y == new_grid_y for part in self.parts_in_grid[layer]):
+                            new_part = Part(new_grid_x, new_grid_y, obj_id, layer, rot)
+                            self.parts_in_grid[layer].append(new_part)
+                
+        if event.type == pygame.KEYUP:
+            if event.key == pygame.K_w:
+                self.moving_up = False
+            if event.key == pygame.K_s:
+                self.moving_down = False
+            if event.key == pygame.K_a:
+                self.moving_left = False
+            if event.key == pygame.K_d:
+                self.moving_right = False
+            if event.key == pygame.K_UP:
+                self.zooming_in = False
+            if event.key == pygame.K_DOWN:
+                self.zooming_out = False
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            if event.button == 1:  # Left mouse button
+                mouse_x, mouse_y = event.pos
+                if pygame.key.get_mods() & pygame.KMOD_CTRL:
+                    # Start selection
+                    self.selecting = True
+                    self.selection_start = (mouse_x, mouse_y)
+                    self.selected_parts = []
                 else:
-                    # Fallback to color
-                    color = BLUE if obj['type'] == 1 else RED
-                    pygame.draw.rect(screen, color, (x, y, cell_size // 2, cell_size))
-                    font = pygame.font.SysFont(None, int(18 * (cell_size / BASE_CELL_SIZE)))
-                    text = font.render(str(obj['type']), True, WHITE)
-                    screen.blit(text, (x + 2, y + 2))
+                    grid_x, grid_y = self.screen_to_grid(mouse_x, mouse_y)
+                    # Check if clicking on a selected part to start dragging
+                    clicked_part = None
+                    for part in self.selected_parts:
+                        if part.grid_x == grid_x and part.grid_y == grid_y:
+                            clicked_part = part
+                            break
+                    if clicked_part:
+                        self.dragging = True
+                        self.drag_start_grid = (grid_x, grid_y)
+                        self.drag_initial_positions = [(part.grid_x, part.grid_y) for part in self.selected_parts]
+                    else:
+                        layer = 0 if selected_part_id in [5, 6] else 1
+                        # Check if there's already a part at this position on the layer
+                        if not any(part.grid_x == grid_x and part.grid_y == grid_y for part in self.parts_in_grid[layer]):
+                            # Create a new part at the clicked cell using selected_part_id
+                            new_part = Part(grid_x, grid_y, selected_part_id, layer)
+                            self.parts_in_grid[layer].append(new_part)
 
-def load_file():
-    root = tk.Tk()
-    root.withdraw()
-    filename = filedialog.askopenfilename(initialdir=SAVE_DIR, title="Select save file")
-    root.destroy()
-    if filename:
-        return os.path.basename(filename)
-    return None
-
-def save_file():
-    root = tk.Tk()
-    root.withdraw()
-    filename = filedialog.asksaveasfilename(initialdir=SAVE_DIR, title="Save save file")
-    root.destroy()
-    if filename:
-        return os.path.basename(filename)
-    return None
-
-def add_object(objects, x, y):
-    cell_objs = [obj for obj in objects if obj['x'] == x and obj['y'] == y]
-    if not cell_objs:
-        objects.append({'type': 1, 'skin': 0, 'x': x, 'y': y})
-    elif len(cell_objs) == 1 and cell_objs[0]['type'] not in [6, 7]:
-        # Can add 6 or 7, but not both, and not if already have one
-        has_6 = any(obj['type'] == 6 for obj in cell_objs)
-        has_7 = any(obj['type'] == 7 for obj in cell_objs)
-        if not has_6 and not has_7:
-            objects.append({'type': 6, 'skin': 0, 'x': x, 'y': y})  # Add 6 first
-        elif has_6 and not has_7:
-            objects.append({'type': 7, 'skin': 0, 'x': x, 'y': y})  # Add 7 if 6 is there
-        # If has_7, don't add 6; if both, don't add
-
-def remove_object(objects, x, y):
-    objects[:] = [obj for obj in objects if not (obj['x'] == x and obj['y'] == y)]
-
-def main():
-    pygame.init()
-    screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
-    pygame.display.set_caption("BP:Edit")
-    clock = pygame.time.Clock()
-    font = pygame.font.SysFont(None, 24)
-
-    # Load texture atlas
-    texture_atlas = {}
-    atlas_img = pygame.image.load('Textures/parts.png')
-    atlas_width, atlas_height = atlas_img.get_size()
-    tile_size = 108
-    cols = atlas_width // tile_size
-    rows = atlas_height // tile_size
-    i = 1
-    for r in range(rows):
-        for c in range(cols):
-            x = c * tile_size
-            y = r * tile_size
-            if x + tile_size <= atlas_width and y + tile_size <= atlas_height and i <= 23:
-                texture_atlas[i] = atlas_img.subsurface((x, y, tile_size, tile_size))
-                i += 1
-            else:
-                break
-
-    # Load a sample save file (replace with file selection logic)
-    current_file = 'no'
-    objects = load_save_file(current_file)
-
-    # Find max Y for inversion
-    max_y = max((obj['y'] for obj in objects), default=0)
-
-    # Camera variables
-    camera_x = 0
-    camera_y = -160
-    zoom = 1.0
-    cell_size = BASE_CELL_SIZE * zoom
-
-    # Hotbar
-    hotbar_items = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21]  # Available types
-    selected_item = 1
-    hotbar_height = 60
-    hotbar_y = SCREEN_HEIGHT - hotbar_height
-
-    # Buttons
-    load_button = SimplePygameButton((10, 10), (100, 30), [("Load", (10, 5))], lambda: load_file_action(objects), GREEN)
-    save_button = SimplePygameButton((120, 10), (100, 30), [("Save", (10, 5))], lambda: save_file_action(objects), BLUE)
-
-    # Selection
-    selected_cells = set()
-    drag_start = None
-    selection_start = None
-    selection_end = None
-    initial_positions = {}
-
-    # Info display
-    info_text = ""
-    info_pos = (0, 0)
-
-    def load_file_action(objects):
-        nonlocal current_file, max_y
-        filename = load_file()
-        if filename:
-            current_file = filename
-            objects[:] = load_save_file(current_file)
-            max_y = max((obj['y'] for obj in objects), default=0)
-
-    def save_file_action(objects):
-        filename = save_file()
-        if filename:
-            save_save_file(filename, objects)
-
-    def draw_hotbar(screen, font):
-        pygame.draw.rect(screen, GRAY, (0, hotbar_y, SCREEN_WIDTH, hotbar_height))
-        for i, item in enumerate(hotbar_items):
-            x = i * 60 + 10
-            y = hotbar_y + 10
-            if item == selected_item:
-                pygame.draw.rect(screen, WHITE, (x-2, y-2, 44, 44))
-            pygame.draw.rect(screen, BLACK, (x, y, 40, 40))
-            if item in texture_atlas:
-                tex = texture_atlas[item]
-                scaled_tex = pygame.transform.scale(tex, (40, 40))
-                screen.blit(scaled_tex, (x, y))
-            else:
-                text = font.render(str(item), True, WHITE)
-                screen.blit(text, (x + 15, y + 15))
-
-    running = True
-    left_mouse_held = False
-    while running:
-        mouse_x, mouse_y = pygame.mouse.get_pos()
-        if mouse_y < hotbar_y:
-            grid_x = int((mouse_x + camera_x) / cell_size)
-            grid_y = int((max_y - (mouse_y + camera_y) / cell_size))  # Invert Y
-            cell_objs = [obj for obj in objects if obj['x'] == grid_x and obj['y'] == grid_y]
-            if cell_objs:
-                info_text = f"Cell ({grid_x}, {grid_y}): " + ", ".join(f"{OBJECT_NAME.get(obj['type'], str(obj['type']))} Skin {obj['skin']} Rot {obj.get('rotation', 0)}" for obj in cell_objs)
-                info_pos = (mouse_x + 10, mouse_y - 10)
-            else:
-                info_text = ""
-        else:
-            info_text = ""
-
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                running = False
-            elif event.type == pygame.MOUSEBUTTONDOWN:
-                if event.button == 1:  # Left click
-                    if mouse_y >= hotbar_y:
-                        # Hotbar selection
-                        for i, item in enumerate(hotbar_items):
-                            x = i * 60 + 10
-                            if x <= mouse_x <= x + 40:
-                                selected_item = item
-                                break
-                    elif mouse_y >= 100:
-                        grid_x = int((mouse_x + camera_x) / cell_size)
-                        grid_y = int((SCREEN_HEIGHT - (mouse_y + camera_y) / cell_size))
-                        if pygame.key.get_mods() & pygame.KMOD_CTRL:
-                            # Start selection rectangle
-                            selection_start = (grid_x, grid_y)
-                            selection_end = (grid_x, grid_y)
-                            left_mouse_held = True
-                        else:
-                            # Paint or move
-                            if selected_cells:
-                                # Start drag
-                                drag_start = (mouse_x, mouse_y)
-                                left_mouse_held = True
-                                # Store initial positions
-                                initial_positions = {(obj['x'], obj['y']): (obj['x'], obj['y']) for obj in objects if (obj['x'], obj['y']) in selected_cells}
-                            else:
-                                # Add selected item if not already there
-                                cell_objs = [obj for obj in objects if obj['x'] == grid_x and obj['y'] == grid_y]
-                                if not any(obj['type'] == selected_item for obj in cell_objs):
-                                    if selected_item in [5, 6]:
-                                        # Special logic for frames
-                                        if not cell_objs:
-                                            objects.append({'type': selected_item, 'skin': 0, 'x': grid_x, 'y': grid_y, 'rotation': 0})
-                                        elif len(cell_objs) == 1 and cell_objs[0]['type'] not in [5, 6]:
-                                            has_5 = any(obj['type'] == 5 for obj in cell_objs)
-                                            has_6 = any(obj['type'] == 6 for obj in cell_objs)
-                                            if not has_5 and not has_6:
-                                                objects.append({'type': selected_item, 'skin': 0, 'x': grid_x, 'y': grid_y, 'rotation': 0})
-                                    else:
-                                        if len(cell_objs) < 2 and not any(obj['type'] == selected_item for obj in cell_objs):
-                                            objects.append({'type': selected_item, 'skin': 0, 'x': grid_x, 'y': grid_y, 'rotation': 0})
-                                left_mouse_held = True
-                elif event.button == 3:  # Right click
-                    if mouse_y < hotbar_y:
-                        grid_x = int((mouse_x + camera_x) / cell_size)
-                        grid_y = int((max_y - (mouse_y + camera_y) / cell_size))
-                        objects[:] = [obj for obj in objects if not (obj['x'] == grid_x and obj['y'] == grid_y)]
-            elif event.type == pygame.MOUSEBUTTONUP:
-                if event.button == 1:
-                    left_mouse_held = False
-                    if selection_start and selection_end:
-                        # Finalize selection
-                        min_x = min(selection_start[0], selection_end[0])
-                        max_x = max(selection_start[0], selection_end[0])
-                        min_y_sel = min(selection_start[1], selection_end[1])
-                        max_y_sel = max(selection_start[1], selection_end[1])
-                        selected_cells = set()
-                        for obj in objects:
-                            if min_x <= obj['x'] <= max_x and min_y_sel <= obj['y'] <= max_y_sel:
-                                selected_cells.add((obj['x'], obj['y']))
-                        selection_start = None
-                        selection_end = None
-                    drag_start = None
-            elif event.type == pygame.MOUSEMOTION:
-                if left_mouse_held and mouse_y < hotbar_y:
-                    if selection_start:
-                        # Update selection rectangle
-                        grid_x = int((mouse_x + camera_x) / cell_size)
-                        grid_y = int((max_y - (mouse_y + camera_y) / cell_size))
-                        selection_end = (grid_x, grid_y)
-                    elif selected_cells and drag_start:
-                        dx = mouse_x - drag_start[0]
-                        dy = mouse_y - drag_start[1]
-                        grid_dx = int(dx / cell_size)
-                        grid_dy = -int(dy / cell_size)  # Invert Y
-                        if grid_dx or grid_dy:
-                            # Reset to initial positions and apply new offset
-                            for obj in objects[:]:
-                                if (obj['x'], obj['y']) in initial_positions:
-                                    init_x, init_y = initial_positions[(obj['x'], obj['y'])]
-                                    obj['x'] = init_x + grid_dx
-                                    obj['y'] = init_y + grid_dy
-                            # Update selected_cells to new positions
-                            selected_cells = {(x + grid_dx, y + grid_dy) for x, y in selected_cells}
-                            # Update initial_positions for next move
-                            initial_positions = {(obj['x'], obj['y']): (obj['x'], obj['y']) for obj in objects if (obj['x'], obj['y']) in selected_cells}
-                            drag_start = (mouse_x, mouse_y)
-                    elif not selected_cells:
-                        grid_x = int((mouse_x + camera_x) / cell_size)
-                        grid_y = int((max_y - (mouse_y + camera_y) / cell_size))
-                        cell_objs = [obj for obj in objects if obj['x'] == grid_x and obj['y'] == grid_y]
-                        if not any(obj['type'] == selected_item for obj in cell_objs):
-                            if selected_item in [6, 7]:
-                                if not cell_objs:
-                                    objects.append({'type': selected_item, 'skin': 0, 'x': grid_x, 'y': grid_y, 'rotation': 0})
-                                elif len(cell_objs) == 1 and cell_objs[0]['type'] not in [6, 7]:
-                                    has_6 = any(obj['type'] == 6 for obj in cell_objs)
-                                    has_7 = any(obj['type'] == 7 for obj in cell_objs)
-                                    if not has_6 and not has_7:
-                                        objects.append({'type': selected_item, 'skin': 0, 'x': grid_x, 'y': grid_y, 'rotation': 0})
-                                    elif has_6 and selected_item == 7:
-                                        objects.append({'type': 7, 'skin': 0, 'x': grid_x, 'y': grid_y, 'rotation': 0})
-                            else:
-                                if len(cell_objs) < 2 and not any(obj['type'] == selected_item for obj in cell_objs):
-                                    objects.append({'type': selected_item, 'skin': 0, 'x': grid_x, 'y': grid_y, 'rotation': 0})
-            elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_LEFT or event.key == pygame.K_a:
-                    camera_x -= cell_size
-                elif event.key == pygame.K_RIGHT or event.key == pygame.K_d:
-                    camera_x += cell_size
-                elif event.key == pygame.K_UP or event.key == pygame.K_w:
-                    camera_y -= cell_size
-                elif event.key == pygame.K_DOWN or event.key == pygame.K_s:
-                    camera_y += cell_size
-                elif event.key == pygame.K_PLUS or event.key == pygame.K_EQUALS:
-                    zoom *= 1.25
-                    cell_size = BASE_CELL_SIZE * zoom
-                elif event.key == pygame.K_r:
-                    for obj in objects:
-                        grid_x = int((mouse_x + camera_x) / cell_size)
-                        grid_y = int((max_y - (mouse_y + camera_y) / cell_size))
-                        if obj['x'] == grid_x and obj['y'] == grid_y:
-                            obj['rotation'] = (obj.get('rotation', 0) + 1) % 4
-                elif event.key == pygame.K_MINUS:
-                    zoom /= 1.25
-                    cell_size = BASE_CELL_SIZE * zoom
-                    if cell_size < 10:
-                        cell_size = 10
-                        zoom = cell_size / BASE_CELL_SIZE
-
-            load_button.update(event)
-            save_button.update(event)
-
-        screen.fill(BLACK)
-        draw_grid(screen, camera_x, camera_y, cell_size)
-        draw_objects(screen, objects, camera_x, camera_y, cell_size, max_y, texture_atlas)
-        # Draw selected cells
-        for gx, gy in selected_cells:
-            x = int(gx * cell_size - camera_x)
-            y = int((max_y - gy) * cell_size - camera_y)
-            if 0 <= x < SCREEN_WIDTH and 0 <= y < SCREEN_HEIGHT:
-                pygame.draw.rect(screen, GREEN, (x, y, cell_size, cell_size), 2)
-        # Draw selection rectangle
-        if selection_start and selection_end:
-            min_grid_x = min(selection_start[0], selection_end[0])
-            max_grid_x = max(selection_start[0], selection_end[0])
-            min_grid_y = min(selection_start[1], selection_end[1])
-            max_grid_y = max(selection_start[1], selection_end[1])
-            screen_x = int(min_grid_x * cell_size - camera_x)
-            screen_y = int((max_y - max_grid_y) * cell_size - camera_y)
-            width = int((max_grid_x - min_grid_x + 1) * cell_size)
-            height = int((max_grid_y - min_grid_y + 1) * cell_size)
-            pygame.draw.rect(screen, BLUE, (screen_x, screen_y, width, height), 2)
-        draw_hotbar(screen, font)
-        load_button.draw(screen, font)
-        save_button.draw(screen, font)
-        if info_text:
-            info_surface = font.render(info_text, True, WHITE)
-            screen.blit(info_surface, info_pos)
-        pygame.display.flip()
-        clock.tick(60)
-
-    pygame.quit()
+            elif event.button == 3:  # Right mouse button
+                mouse_x, mouse_y = event.pos
+                grid_x, grid_y = self.screen_to_grid(mouse_x, mouse_y)
+                # Remove parts at the clicked cell from all layers
+                for layer in range(len(self.parts_in_grid)):
+                    self.parts_in_grid[layer] = [part for part in self.parts_in_grid[layer] if not (part.grid_x == grid_x and part.grid_y == grid_y)]
+        elif event.type == pygame.MOUSEMOTION:
+            mouse_x, mouse_y = event.pos
+            if self.selecting:
+                start_x, start_y = self.selection_start
+                self.selection_rect = pygame.Rect(min(start_x, mouse_x), min(start_y, mouse_y), abs(mouse_x - start_x), abs(mouse_y - start_y))
+            elif self.dragging:
+                current_grid_x, current_grid_y = self.screen_to_grid(mouse_x, mouse_y)
+                dx = current_grid_x - self.drag_start_grid[0]
+                dy = current_grid_y - self.drag_start_grid[1]
+                for i, part in enumerate(self.selected_parts):
+                    initial_x, initial_y = self.drag_initial_positions[i]
+                    part.grid_x = initial_x + dx
+                    part.grid_y = initial_y + dy
+        elif event.type == pygame.MOUSEBUTTONUP:
+            if event.button == 1:
+                if self.selecting:
+                    mouse_x, mouse_y = event.pos
+                    start_x, start_y = self.selection_start
+                    min_x = min(start_x, mouse_x)
+                    max_x = max(start_x, mouse_x)
+                    min_y = min(start_y, mouse_y)
+                    max_y = max(start_y, mouse_y)
+                    start_grid_x, start_grid_y = self.screen_to_grid(min_x, min_y)
+                    end_grid_x, end_grid_y = self.screen_to_grid(max_x, max_y)
+                    for layer in self.parts_in_grid:
+                        for part in layer:
+                            if start_grid_x <= part.grid_x <= end_grid_x and start_grid_y <= part.grid_y <= end_grid_y:
+                                if part not in self.selected_parts:
+                                    self.selected_parts.append(part)
+                    self.selecting = False
+                    self.selection_rect = None
+                elif self.dragging:
+                    self.dragging = False
+                    self.drag_start_grid = None
+                    self.drag_initial_positions = None
 
 if __name__ == "__main__":
-    main()
+   app = App()
+   app.run()
