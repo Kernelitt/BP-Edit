@@ -7,12 +7,13 @@ SAVEFILE_DIRECTORY = os.path.join(os.environ["APPDATA"], "..", "LocalLow\\_Imagi
 print(SAVEFILE_DIRECTORY)
 
 class Part:
-    def __init__(self, grid_x, grid_y, object_id, layer=0, rotation=0):
+    def __init__(self, grid_x, grid_y, object_id, layer=0, rotation=0, mirror=False):
         self.grid_x = grid_x
         self.grid_y = grid_y
         self.object_id = object_id
         self.layer = layer
         self.rotation = rotation
+        self.mirror = mirror
 
 class App():
     def __init__(self):
@@ -44,6 +45,8 @@ class App():
                         self.load_savefile()
                     elif event.key == pygame.K_s and (event.mod & pygame.KMOD_CTRL):
                         self.save_savefile()
+                    elif event.key == pygame.K_i and (event.mod & pygame.KMOD_CTRL):
+                        self.load_parts_from_file()
                     elif event.key == pygame.K_F1:
                         self.show_help = not self.show_help
                     else:
@@ -90,7 +93,7 @@ class App():
         # Draw help screen if enabled
         if self.show_help:
             self.draw_help()
-            
+
         self.screen.blit(self.font.render("Press F1 to show controls", True, (255, 255, 255)), (200, 0))
         pygame.display.flip()
 
@@ -114,6 +117,16 @@ class App():
         if file_path:
             self.grid.load(file_path)
 
+    def load_parts_from_file(self):
+        file_path = filedialog.askopenfilename(initialdir=SAVEFILE_DIRECTORY)
+        if file_path:
+            loaded_parts = self.grid.load_parts_from_file(file_path)
+            if loaded_parts:
+                # Select the loaded parts
+                self.grid.selected_parts = loaded_parts
+                # Center the view on the loaded parts
+                self.grid.center_on_parts(loaded_parts)
+
     def save_savefile(self):
         file_path = filedialog.asksaveasfilename(initialdir=SAVEFILE_DIRECTORY)
         if file_path:
@@ -128,10 +141,12 @@ class App():
             "Right Click - Remove part",
             "Ctrl + Left Click - Start selection",
             "R - Rotate part",
+            "T - Mirror part",
             "Ctrl+C - Copy selected parts",
             "Ctrl+V - Paste copied parts",
             "Ctrl+O - Load file",
             "Ctrl+S - Save file",
+            "Ctrl+I - Load parts from file",
             "F1 - Toggle help"
         ]
         x, y = 10, 10
@@ -205,6 +220,8 @@ class Grid():
                     screen_x = part.grid_x * cell_size_zoomed - self.offset_x
                     screen_y = part.grid_y * cell_size_zoomed - self.offset_y
                     scaled_texture = pygame.transform.scale(texture, (cell_size_zoomed, cell_size_zoomed))
+                    if part.mirror:
+                        scaled_texture = pygame.transform.flip(scaled_texture, True, False)
                     rotated_texture = pygame.transform.rotate(scaled_texture, part.rotation * 90)
                     screen.blit(rotated_texture, (screen_x, screen_y))
                     # Highlight selected parts
@@ -242,7 +259,7 @@ class Grid():
         with open(filepath, 'w') as f:
             for layer in self.parts_in_grid:
                 for part in layer:
-                    f.write(f"{part.object_id},0,{part.grid_x},{-part.grid_y},{part.rotation},0,0,0\n")
+                    f.write(f"{part.object_id},0,{part.grid_x},{-part.grid_y},{part.rotation},{int(part.mirror)},0,0\n")
 
     def load(self, filepath):
         self.parts_in_grid = [[], []]  # Initialize as list of lists for layers
@@ -251,16 +268,53 @@ class Grid():
                 line = line.strip()
                 if line:
                     parts = line.split(',')
-                    if len(parts) >= 5:
+                    if len(parts) >= 6:
                         object_id = int(parts[0])
                         skin = int(parts[1])
                         grid_x = int(parts[2])
                         grid_y = -int(parts[3])
                         rotation = int(parts[4])
+                        mirror = bool(int(parts[5]))
                         layer = 0 if object_id in [5, 6] else 1
-                        new_part = Part(grid_x, grid_y, object_id, layer, rotation)
+                        new_part = Part(grid_x, grid_y, object_id, layer, rotation, mirror)
                         if layer < len(self.parts_in_grid):
                             self.parts_in_grid[layer].append(new_part)
+
+    def load_parts_from_file(self, filepath):
+        loaded_parts = []
+        with open(filepath, 'r') as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    parts = line.split(',')
+                    if len(parts) >= 6:
+                        object_id = int(parts[0])
+                        skin = int(parts[1])
+                        grid_x = int(parts[2])
+                        grid_y = -int(parts[3])
+                        rotation = int(parts[4])
+                        mirror = bool(int(parts[5]))
+                        layer = 0 if object_id in [5, 6] else 1
+                        new_part = Part(grid_x, grid_y, object_id, layer, rotation, mirror)
+                        # Add to grid without clearing
+                        if layer < len(self.parts_in_grid):
+                            self.parts_in_grid[layer].append(new_part)
+                        loaded_parts.append(new_part)
+        return loaded_parts
+
+    def center_on_parts(self, parts):
+        if not parts:
+            return
+        min_x = min(part.grid_x for part in parts)
+        max_x = max(part.grid_x for part in parts)
+        min_y = min(part.grid_y for part in parts)
+        max_y = max(part.grid_y for part in parts)
+        center_x = (min_x + max_x) / 2
+        center_y = (min_y + max_y) / 2
+        screen_width, screen_height = 1600, 900  # Assuming screen size
+        cell_size_zoomed = int(self.cell_size * self.zoom)
+        self.offset_x = int(center_x * cell_size_zoomed - screen_width / 2)
+        self.offset_y = int(center_y * cell_size_zoomed - screen_height / 2)
 
     def move(self, dx, dy):
         pass
@@ -288,6 +342,15 @@ class Grid():
                         if part.grid_x == grid_x and part.grid_y == grid_y:
                             part.rotation = (part.rotation - 1) % 4
                             break
+            if event.key == pygame.K_t:
+                mouse_x, mouse_y = pygame.mouse.get_pos()
+                grid_x, grid_y = self.screen_to_grid(mouse_x, mouse_y)
+                # Mirror the part at this position
+                for layer in self.parts_in_grid:
+                    for part in layer:
+                        if part.grid_x == grid_x and part.grid_y == grid_y and part.object_id in [33, 34, 35, 36]:
+                            part.mirror = not part.mirror
+                            break
             elif event.key == pygame.K_c and pygame.key.get_mods() & pygame.KMOD_CTRL:
                 # Copy selected parts
                 self.copied_parts = []
@@ -296,18 +359,18 @@ class Grid():
                     min_y = min(part.grid_y for part in self.selected_parts)
                     for part in self.selected_parts:
                         # Store relative positions
-                        self.copied_parts.append((part.object_id, part.grid_x - min_x, part.grid_y - min_y, part.rotation, part.layer))
+                        self.copied_parts.append((part.object_id, part.grid_x - min_x, part.grid_y - min_y, part.rotation, part.layer, part.mirror))
             elif event.key == pygame.K_v and pygame.key.get_mods() & pygame.KMOD_CTRL:
                 # Paste copied parts
                 if self.copied_parts:
                     mouse_x, mouse_y = pygame.mouse.get_pos()
                     base_grid_x, base_grid_y = self.screen_to_grid(mouse_x, mouse_y)
-                    for obj_id, rel_x, rel_y, rot, layer in self.copied_parts:
+                    for obj_id, rel_x, rel_y, rot, layer, mirror in self.copied_parts:
                         new_grid_x = base_grid_x + rel_x
                         new_grid_y = base_grid_y + rel_y
                         # Check if position is free
                         if not any(part.grid_x == new_grid_x and part.grid_y == new_grid_y for part in self.parts_in_grid[layer]):
-                            new_part = Part(new_grid_x, new_grid_y, obj_id, layer, rot)
+                            new_part = Part(new_grid_x, new_grid_y, obj_id, layer, rot, mirror)
                             self.parts_in_grid[layer].append(new_part)
                 
         if event.type == pygame.KEYUP:
