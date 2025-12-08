@@ -4,7 +4,7 @@ from tkinter import filedialog, Tk
 
 TEXTURE_SHEET_PATH = "Textures\\parts.png"
 SAVEFILE_DIRECTORY = os.path.join(os.environ["APPDATA"], "..", "LocalLow\\_Imaginary_\\Bad Piggies__Rebooted\\contraptionsB\\")
-print(SAVEFILE_DIRECTORY)
+
 
 class Part:
     def __init__(self, grid_x, grid_y, object_id, layer=0, rotation=0, mirror=False, skin=0):
@@ -20,6 +20,7 @@ class App():
     def __init__(self):
         pygame.init()
         self.screen = pygame.display.set_mode((1600, 900))
+        pygame.display.set_caption("BP-Edit")
         self.clock = pygame.time.Clock()
 
         self.grid = Grid()
@@ -271,12 +272,15 @@ class Grid():
         self.cols = atlas_width // 108
         self.rows = atlas_height // 108
         # Extract textures from main atlas (skin=0)
-        for i in range(1, 48):
+        for i in range(1, 47):
             col = (i - 1) % self.cols
             row = (i - 1) // self.cols
             x = col * 108
             y = row * 108
-            self.textures[(i, 0)] = self.atlas.subsurface((x, y, 108, 108))
+            subsurface = self.atlas.subsurface((x, y, 108, 108))
+            # Skip empty surfaces
+            if subsurface.get_bounding_rect().width > 0:
+                self.textures[(i, 0)] = subsurface
 
         # Load skin atlases if available
         for obj_id in range(1, self.cols * self.rows + 1):
@@ -301,7 +305,7 @@ class Grid():
 
         # Create skin dictionary: {obj_id: [list of skin textures]}
         self.skin_dict = {}
-        for obj_id in range(1, 48):
+        for obj_id in range(1, 47):
             self.skin_dict[obj_id] = [self.textures[(obj_id, 0)]]  # Add default skin first
         for (obj_id, skin_i), texture in self.skin_textures.items():
             self.skin_dict[obj_id].append(texture)
