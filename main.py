@@ -169,6 +169,8 @@ class App():
             "Ctrl + Left Click - Start selection",
             "R - Rotate part",
             "T - Mirror part",
+            "Shift+R - Rotate selected building counterclockwise",
+            "Shift+T - Flip selected building horizontally",
             "Ctrl+C - Copy selected parts",
             "Ctrl+V - Paste copied parts",
             "Ctrl+O - Load file",
@@ -465,23 +467,86 @@ class Grid():
             if event.key == pygame.K_DOWN:
                 self.zooming_out = True
             if event.key == pygame.K_r:
-                mouse_x, mouse_y = pygame.mouse.get_pos()
-                grid_x, grid_y = self.screen_to_grid(mouse_x, mouse_y)
-                # Rotate the part at this position
-                for layer in self.parts_in_grid:
-                    for part in layer:
-                        if part.grid_x == grid_x and part.grid_y == grid_y:
-                            part.rotation = (part.rotation - 1) % 4
-                            break
-            if event.key == pygame.K_t:
-                mouse_x, mouse_y = pygame.mouse.get_pos()
-                grid_x, grid_y = self.screen_to_grid(mouse_x, mouse_y)
-                # Mirror the part at this position
-                for layer in self.parts_in_grid:
-                    for part in layer:
-                        if part.grid_x == grid_x and part.grid_y == grid_y and part.object_id in [33, 34, 35, 36]:
+                if pygame.key.get_mods() & pygame.KMOD_SHIFT:
+                    # Rotate selected building clockwise around its center
+                    if self.selected_parts:
+                        # Calculate center of selected parts
+                        min_x = min(part.grid_x for part in self.selected_parts)
+                        max_x = max(part.grid_x for part in self.selected_parts)
+                        min_y = min(part.grid_y for part in self.selected_parts)
+                        max_y = max(part.grid_y for part in self.selected_parts)
+                        cx = (min_x + max_x) // 2
+                        cy = (min_y + max_y) // 2
+                        # Rotate positions and orientations
+                        for part in self.selected_parts:
+                            # Rotate position 90 degrees clockwise around center
+                            dx = part.grid_x - cx
+                            dy = part.grid_y - cy
+                            new_dx = dy
+                            new_dy = -dx
+                            part.grid_x = round(cx + new_dx)
+                            part.grid_y = round(cy + new_dy)
+                            # Rotate part orientation counterclockwise
+                            part.rotation = (part.rotation + 1) % 4
+                        # After rotation, calculate new center and translate to keep it fixed
+                        new_min_x = min(part.grid_x for part in self.selected_parts)
+                        new_max_x = max(part.grid_x for part in self.selected_parts)
+                        new_min_y = min(part.grid_y for part in self.selected_parts)
+                        new_max_y = max(part.grid_y for part in self.selected_parts)
+                        new_cx = (new_min_x + new_max_x) // 2
+                        new_cy = (new_min_y + new_max_y) // 2
+                        # Translate all parts to align new center with initial center
+                        shift_x = round(cx - new_cx)
+                        shift_y = round(cy - new_cy)
+                        for part in self.selected_parts:
+                            part.grid_x += shift_x
+                            part.grid_y += shift_y
+                else:
+                    mouse_x, mouse_y = pygame.mouse.get_pos()
+                    grid_x, grid_y = self.screen_to_grid(mouse_x, mouse_y)
+                    # Rotate the part at this position
+                    for layer in self.parts_in_grid:
+                        for part in layer:
+                            if part.grid_x == grid_x and part.grid_y == grid_y:
+                                part.rotation = (part.rotation - 1) % 4
+                                break
+            elif event.key == pygame.K_t: 
+                if pygame.key.get_mods() & pygame.KMOD_SHIFT:
+                    # Flip selected building horizontally (180 degrees along x)
+                    if self.selected_parts:
+                        # Calculate center of selected parts
+                        min_x = min(part.grid_x for part in self.selected_parts)
+                        max_x = max(part.grid_x for part in self.selected_parts)
+                        cx = (min_x + max_x) // 2
+                    # Flip positions horizontally and adjust orientations
+                    for part in self.selected_parts:
+                        # Reflect over vertical axis through center
+                        part.grid_x = round(2 * cx - part.grid_x)
+                        # Adjust orientation for horizontal flip
+                        if part.object_id in [33, 34, 35, 36]:
+                            # Toggle mirror for mirrorable parts
                             part.mirror = not part.mirror
-                            break
+                        if part.object_id in [12,13,14,15,16,17,18,37]:
+                            part.rotation = (4 - part.rotation) % 4 + 2
+                        else:
+                            part.rotation = (4 - part.rotation) % 4 
+                    # After flip, calculate new center and translate to keep it fixed
+                    new_min_x = min(part.grid_x for part in self.selected_parts)
+                    new_max_x = max(part.grid_x for part in self.selected_parts)
+                    new_cx = (new_min_x + new_max_x) // 2
+                    # Translate all parts to align new center with initial center
+                    shift_x = round(cx - new_cx)
+                    for part in self.selected_parts:
+                        part.grid_x += shift_x
+                else:
+                    mouse_x, mouse_y = pygame.mouse.get_pos()
+                    grid_x, grid_y = self.screen_to_grid(mouse_x, mouse_y)
+                    # Mirror the part at this position
+                    for layer in self.parts_in_grid:
+                        for part in layer:
+                            if part.grid_x == grid_x and part.grid_y == grid_y and part.object_id in [33, 34, 35, 36]:
+                                part.mirror = not part.mirror
+                                break
             elif event.key == pygame.K_c and pygame.key.get_mods() & pygame.KMOD_CTRL:
                 # Copy selected parts
                 self.copied_parts = []
