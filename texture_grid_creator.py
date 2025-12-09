@@ -49,7 +49,7 @@ def create_texture_grid(folder_path):
 
 # Main execution
 if __name__ == "__main__":
-    folder_path = input("Enter the path to the folder with textures: ").strip()
+    folder_path = "for_tgc"
     if os.path.isdir(folder_path):
         create_texture_grid(folder_path)
     else:
