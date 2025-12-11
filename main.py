@@ -288,7 +288,7 @@ class Grid():
         self.cols = atlas_width // 108
         self.rows = atlas_height // 108
         # Extract textures from main atlas (skin=0)
-        for i in range(1, 47):
+        for i in range(1, 48):
             col = (i - 1) % self.cols
             row = (i - 1) // self.cols
             x = col * 108
@@ -299,8 +299,8 @@ class Grid():
                 self.textures[(i, 0)] = subsurface
 
         # Load skin atlases if available
-        for obj_id in range(1, self.cols * self.rows + 1):
-            skin_path = TEXTURES_DIRECTORY_PATH+"{obj_id}_skin.png"
+        for obj_id in range(1, 48):
+            skin_path = TEXTURES_DIRECTORY_PATH+str(obj_id)+"_skin.png"
             if os.path.exists(skin_path):
                 skin_atlas = pygame.image.load(skin_path).convert_alpha()
                 skin_atlas_width, skin_atlas_height = skin_atlas.get_size()
@@ -321,11 +321,20 @@ class Grid():
 
         # Create skin dictionary: {obj_id: [list of skin textures]}
         self.skin_dict = {}
-        for obj_id in range(1, 47):
+        for obj_id in range(1, 48):
             self.skin_dict[obj_id] = [self.textures[(obj_id, 0)]]  # Add default skin first
         for (obj_id, skin_i), texture in self.skin_textures.items():
             self.skin_dict[obj_id].append(texture)
         print(self.skin_dict)
+
+    def get_rotation_angle(self, object_id, rotation):
+        if object_id in [39, 45]:
+            if rotation < 4:
+                return rotation * 90
+            else:
+                return (rotation - 4) * 90 + 45
+        else:
+            return rotation * 90
         
     def draw(self, screen):
         width, height = screen.get_size()
@@ -369,7 +378,8 @@ class Grid():
                 scaled_texture = pygame.transform.smoothscale(texture, (cell_size_zoomed,cell_size_zoomed))
                 if part.mirror:
                     scaled_texture = pygame.transform.flip(scaled_texture, True, False)
-                rotated_texture = pygame.transform.rotate(scaled_texture, part.rotation * 90)
+                angle = self.get_rotation_angle(part.object_id, part.rotation)
+                rotated_texture = pygame.transform.rotate(scaled_texture, angle)
                 screen.blit(rotated_texture, (screen_x, screen_y))
                 # Highlight selected parts
                 if part in self.selected_parts:
@@ -501,7 +511,10 @@ class Grid():
                             part.grid_x = round(cx + new_dx)
                             part.grid_y = round(cy + new_dy)
                             # Rotate part orientation counterclockwise
-                            part.rotation = (part.rotation + 1) % 4
+                            if part.object_id in [39, 45]:
+                                part.rotation = (part.rotation + 2) % 8
+                            else:
+                                part.rotation = (part.rotation + 1) % 4
                         # After rotation, calculate new center and translate to keep it fixed
                         new_min_x = min(part.grid_x for part in self.selected_parts)
                         new_max_x = max(part.grid_x for part in self.selected_parts)
@@ -522,7 +535,10 @@ class Grid():
                     for layer in self.parts_in_grid:
                         for part in layer:
                             if part.grid_x == grid_x and part.grid_y == grid_y:
-                                part.rotation = (part.rotation - 1) % 4
+                                if part.object_id in [39, 45]:
+                                    part.rotation = (part.rotation - 1) % 8
+                                else:
+                                    part.rotation = (part.rotation - 1) % 4
                                 break
             elif event.key == pygame.K_t: 
                 if pygame.key.get_mods() & pygame.KMOD_SHIFT:
